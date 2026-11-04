@@ -1,0 +1,15 @@
+resource-ids.env
+__pycache__/
+*.pyc
+.DS_Store
+
+# ハンズオンで CloudShell に作成されるファイル（秘密鍵を含む）
+hands-on/resource-ids.env
+hands-on/user-data.sh
+hands-on/key-policy.json
+hands-on/participants/
+hands-on/outbox/
+hands-on/results/
+
+# 図の書き出し用の依存（img/src で npm install したもの）
+node_modules

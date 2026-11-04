@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<!-- overview: 1 台の EC2 インスタンスが親インスタンスと Enclave に分かれる（記事「AWS Nitro Enclavesとは？」、README 手順 3）。
+     根拠:
+     - ne-001・ne-002: Enclave は、EC2 インスタンスの vCPU とメモリの一部を切り出して作る、隔離された別の VM。
+       永続的なストレージ・対話的なアクセス・外部のネットワークを持たず、親インスタンスとは vsock だけでつながる
+     - ne-036・ne-038: アロケーター（/etc/nitro_enclaves/allocator.yaml）が CPU とメモリを確保する。Nitro ハイパーバイザーが切り分けて隔離する
+     - ne-060〜ne-063: vsock の CID。親インスタンスは 3。vsock-proxy は vsock のポート 8000 で受け、許可リストの宛先（KMS のポート 443）へ転送する
+       （README 手順 3-3: vsock-proxy 8000 kms.<リージョン>.amazonaws.com 443）。KMS への通信は HTTPS
+     - ne-073: NSM（/dev/nsm）がアテステーション文書を発行する
+     数値はハンズオンの設定: 4 vCPU・メモリ 8 GiB のインスタンス（setup.sh の候補 c6i.xlarge・c5.xlarge・c6a.xlarge はどれも 4 vCPU・8 GiB。
+       README は setup.sh が選ぶため、図ではインスタンスタイプの名前を書かない）、allocator.yaml の memory_mib: 3072 と cpu_count: 2、
+       run-enclave の --cpu-count 2 --memory 3072 --enclave-cid 16。
+       親のメモリ「約 5 GiB」は 8 GiB − 3 GiB の概算。親の vCPU 2 は README 手順 3-2 の nproc の結果（4 から 2 に減る）
+     - インスタンスロールの一時的な認証情報は、親インスタンスの client.py が IMDS から取得して Enclave に渡す（README 手順 4-1、hands-on/instance/client.py の instance_role_credentials）
+     - Enclave の中の秘密鍵は、app.py が起動時に作成する RSA 2048 ビットの鍵の組の秘密鍵（hands-on/enclave/app.py）
+     Enclave が持たないものは「持たないもの:」の後に 1 行に 1 つずつ書く（語の途中で折り返さない）。
+     設計: DESIGN.md §6-3。線はすべて水平。vsock-proxy の箱と KMS のアイコンの中心の高さをそろえる -->
+<link rel="stylesheet" href="diagram.css">
+<link rel="stylesheet" href="deepcuts.css">
+<link rel="stylesheet" href="ne.css">
+<script src="wires.js"></script>
+<script src="lines.js"></script>
+<style>
+  #fig { width: 800px; height: 776px; }
+  .bx { width: 152px; }
+  
+  .hd { position: absolute; font-size: 16px; font-weight: 700; line-height: 22px; color: #4a4843; white-space: nowrap; }
+  .opr { position: absolute; border: 2px solid var(--ink); background: #fff; display: flex; align-items: center; gap: 10px; padding: 0 12px; }
+  .opr img { width: 40px; height: 40px; flex: none; }
+  .opr b { display: block; font-size: 17px; font-weight: 900; line-height: 1.3; }
+  .opr span { display: block; font-size: 16px; font-weight: 500; line-height: 1.35; }
+  .none { position: absolute; font-size: 16px; font-weight: 700; line-height: 1.4; color: #4a4843; white-space: nowrap; }
+  .none span { font-weight: 500; color: var(--ink); }
+</style>
+</head><body>
+<div id="fig">
+  <svg id="wires"></svg>
+
+  <!-- EC2 インスタンス -->
+  <div class="grp" style="left:16px;top:16px;width:600px;height:648px">
+    <div class="gl"><img src="../icons/AmazonEC2Instance.svg"><span class="ja">EC2 インスタンス</span><span class="sub">4 vCPU・メモリ 8 GiB</span></div>
+  </div>
+  <div class="hd" style="left:40px;top:56px">ハンズオンの設定</div>
+
+  <!-- Enclave -->
+  <div class="grp enc" style="left:40px;top:112px;width:200px;height:528px">
+    <div class="gl"><img src="../icons/AWSNitroEnclaves.svg"><span class="ja">Enclave</span></div>
+  </div>
+  <div class="hd" style="left:64px;top:156px">vCPU 2<br>メモリ 3 GiB<br>CID 16</div>
+  <div class="bx" style="left:64px;top:248px;height:72px"><b>アプリ</b><code>app.py</code></div>
+  <div class="bx" style="left:64px;top:336px;height:48px"><b>秘密鍵</b></div>
+  <div class="bx" style="left:64px;top:400px;height:96px"><b>NSM</b><span>アテステーション<br>文書を発行する</span></div>
+  <div class="none" style="left:64px;top:526px">持たないもの:<br><span>ディスク<br>外部のネットワーク<br>対話的なアクセス</span></div>
+
+  <!-- 親インスタンス -->
+  <div class="grp p" style="left:344px;top:112px;width:248px;height:528px">
+    <div class="gl pad"><span class="ja">親インスタンス</span></div>
+  </div>
+  <div class="hd" style="left:368px;top:156px">vCPU 2・メモリ 約 5 GiB<br>CID 3</div>
+  <div class="opr" style="left:368px;top:220px;width:200px;height:64px"><img src="../icons/User.svg"><div><b>運営者</b><span>root の権限</span></div></div>
+  <div class="bx" style="left:368px;top:300px;width:200px;height:72px"><code>nitro-cli</code><span>Enclave の起動と停止</span></div>
+  <div class="bx" style="left:368px;top:388px;width:200px;height:48px"><code>client.py</code></div>
+  <div class="bx" id="vp" style="left:368px;top:452px;width:200px;height:72px"><code>vsock-proxy</code><span>ポート 8000</span></div>
+  <div class="opr" style="left:368px;top:540px;width:200px;height:76px;padding:0 8px;gap:8px"><img src="../icons/AWSIdentityAccessManagementRole.svg" style="width:32px;height:32px"><div><span>インスタンス<br>ロールの一時的な<br>認証情報</span></div></div>
+
+  <!-- vsock -->
+  <div class="lb hot" style="left:270px;top:338px">vsock</div>
+
+  <!-- KMS -->
+  <img class="ic" src="../icons/AWSKeyManagementService.svg" style="left:728px;top:464px;width:48px;height:48px">
+  <div class="nm c" style="left:704px;width:96px;top:518px">AWS KMS</div>
+  <div class="lb" style="left:647px;top:461px">HTTPS</div>
+
+  <!-- Nitro ハイパーバイザー -->
+  <div class="bx" style="left:16px;top:688px;width:600px;height:64px"><b>Nitro ハイパーバイザー</b><span>CPU とメモリを切り分けて Enclave を隔離する</span></div>
+</div>
+<script>
+window.addEventListener('load', async () => { await document.fonts.ready;
+  poly([[256, 376], [328, 376]], {hot: true, both: true});   // 両端を Enclave の枠（右辺 x 240）と親インスタンスの枠（左辺 x 344）から 16px 離す
+  poly([[572, 488], [724, 488]]);
+  document.body.dataset.ready = '1';
+});
+</script>
+</body></html>

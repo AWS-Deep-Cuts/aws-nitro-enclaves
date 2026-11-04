@@ -1,0 +1,53 @@
+/* aws-nitro-enclaves の図で共通の部品。diagram.css と deepcuts.css の後に読み込む。
+   文字は 16px 以上（コードは 15px）。枠と中身の間は 24px 以上空ける（DESIGN.md §6-0）。 */
+
+/* 枠（グループ）。見出しは左上の角に接して置き、高さは 32px */
+.grp { position: absolute; border: 2px solid var(--ink); }
+.grp.cloud { border-color: #242f3e; }
+.grp.region { border: 2px dashed #00a4a6; }
+.grp.enc { border: 3px solid var(--hot); }
+.grp > .gl { position: absolute; left: -2px; top: -2px; height: 32px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.grp.enc > .gl { left: -3px; top: -3px; }
+.grp > .gl img { width: 32px; height: 32px; }
+.grp > .gl .ja { font-size: 17px; font-weight: 900; }
+.grp > .gl .en { font-family: var(--font-mono); font-weight: 800; font-size: 16px; letter-spacing: .02em; }
+.grp > .gl .code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; color: var(--grey); }
+.grp > .gl .sub { font-size: 16px; font-weight: 700; color: #4a4843; }
+.grp.enc > .gl .ja { color: var(--hot); }
+.grp > .gl.pad { padding-left: 10px; }
+
+/* 人が行う操作（灰色の点線）と、AWS が自動で行う処理（差し色の点線） */
+.lane > .lt { white-space: nowrap; }
+
+/* 箱：題と補足 */
+.bx { position: absolute; border: 2px solid var(--ink); background: #fff; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.bx b { font-size: 17px; font-weight: 900; line-height: 1.3; }
+.bx span { font-size: 16px; font-weight: 500; line-height: 1.4; }
+.bx code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; line-height: 1.45; }
+.bx.hot { border: 3px solid var(--hot); }
+.bx.fill { background: var(--hot); border-color: var(--hot); color: #fff; }
+.bx.left { align-items: flex-start; text-align: left; }
+
+/* 札（16px） */
+.tg { display: inline-block; font-size: 16px; font-weight: 900; line-height: 1.4; background: var(--ink); color: #fff; padding: 0 8px; }
+.tg.hot { background: var(--hot); }
+.tg.line { background: #fff; color: var(--ink); border: 2px solid var(--ink); padding: 0 6px; }
+.tg.abs { position: absolute; }
+
+/* 線の説明（黒・16px） */
+.lb { position: absolute; font-size: 16px; font-weight: 700; color: var(--ink); white-space: nowrap; line-height: 22px; }
+.lb.r { text-align: right; }
+.lb.hot { color: var(--hot); }
+.lb.grey { color: var(--grey); }
+.lb b { font-weight: 900; }
+.lb code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; }
+
+/* アイコンと名前 */
+.ic { position: absolute; display: block; }
+.nm { position: absolute; font-size: 18px; font-weight: 900; line-height: 1.3; white-space: nowrap; }
+.nm span { display: block; font-size: 16px; font-weight: 500; color: #4a4843; }
+.nm code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; }
+.nm.c { text-align: center; }
+.nm.r { text-align: right; }
+.txt { position: absolute; font-size: 16px; font-weight: 500; line-height: 1.4; }
+.txt.grey { color: #4a4843; }

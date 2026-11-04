@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<!-- pcr-measurements: Enclave イメージの部分と PCR の対応（記事「Enclave イメージと測定値」、README 手順 4。手順 11 から参照）。
+     根拠:
+     - 作成の流れ: docker build -t santa-enclave:latest enclave/ → nitro-cli build-enclave --docker-uri santa-enclave:latest --output-file santa.eif
+       （README 手順 4-2。ne-053、ne-055）。Enclave イメージに入るアプリのファイルは hands-on/enclave/Dockerfile・run.sh・app.py
+     - EIF の部分と PCR の対応: src-image-format/README.md の「EIF Measurements」の図（497〜594 行）。ne-070
+       PCR0 = カーネル・カーネルのコマンドライン・すべての ramdisk、PCR1 = カーネル・カーネルのコマンドライン・最初の ramdisk、
+       PCR2 = 2 つ目以降の ramdisk（ユーザーのアプリ）、PCR8 = 署名に使った証明書（EifSectionSignature があるときだけ）。
+       EifSectionMetadata はどの測定値にも含まれない。セクションのヘッダーも含まれないため、図では省いた
+     - 書き換えた後の変化: README 手順 11 の期待する結果（PCR0 と PCR2 は変わり、PCR1 は変わらない）。ne-047、ne-048
+     表記: 部分の名前は記事の表と同じ「最初の ramdisk」「2 つ目以降の ramdisk」。補足の「起動用の部分」は記事の表の「値が変わるとき」の言い方、
+       「コンテナイメージの中身」は記事の表の PCR2 の行の言い方。このハンズオンでは署名しないため、build-enclave が表示するのは PCR0・PCR1・PCR2
+     設計: DESIGN.md §6-5。すべての部品を x 24〜776 に置く。線は水平だけ -->
+<link rel="stylesheet" href="diagram.css">
+<link rel="stylesheet" href="deepcuts.css">
+<link rel="stylesheet" href="ne.css">
+<script src="wires.js"></script>
+<script src="lines.js"></script>
+<style>
+  #fig { width: 800px; height: 812px; }
+  .flow { position: absolute; top: 48px; height: 72px; width: 160px; }
+  .colh { position: absolute; font-size: 17px; font-weight: 900; line-height: 22px; white-space: nowrap; }
+  .colh code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; }
+  .colh.c { text-align: center; }
+  .stack { position: absolute; left: 24px; width: 288px; }
+  .sec { position: absolute; left: 0; width: 288px; border: 2px solid var(--ink); background: #fff; padding: 0 12px; display: flex; flex-direction: column; justify-content: center; }
+  .sec + .sec { border-top-width: 0; }
+  .sec b { font-size: 17px; font-weight: 900; line-height: 1.3; }
+  .sec span { font-size: 16px; font-weight: 500; line-height: 1.4; color: #4a4843; }
+  .sec.dim { background: var(--bone); border-style: dashed; border-top-width: 2px; }
+  .bar { position: absolute; width: 48px; background: var(--ink); }
+  .bar.hot { background: var(--hot); }
+  .bar.grey { background: var(--grey); }
+  .tbl { left: 24px; width: 752px; font-size: 16px; }
+  .tbl th { font-size: 16px; color: #4a4843; }
+  .tbl td { font-size: 16px; }
+  .tbl td.k { font-family: var(--font-mono); font-weight: 800; font-size: 15px; width: 80px; }
+  .tbl td.v { font-weight: 900; width: 140px; }
+  .tbl tr.hot td.v { color: var(--hot); }
+</style>
+</head><body>
+<div id="fig">
+  <svg id="wires"></svg>
+
+  <!-- 上段: Enclave イメージを作成する流れ -->
+  <div class="bx flow" style="left:24px;width:150px"><code>Dockerfile</code><code>run.sh・app.py</code></div>
+  <div class="bx flow" style="left:315px"><b>コンテナイメージ</b><code>santa-enclave</code></div>
+  <div class="bx flow hot" style="left:616px"><b>Enclave イメージ</b><code>santa.eif</code></div>
+  <div class="lb" style="left:190px;top:52px"><code>docker build</code></div>
+  <div class="lb" style="left:487px;top:28px;text-align:center"><code>nitro-cli<br>build-enclave</code></div>
+
+  <!-- 中段: santa.eif の中身（左）と、各 PCR が測る部分（右の縦の帯） -->
+  <div class="colh" style="left:336px;top:148px">各 PCR が測る部分</div>
+  <div class="colh" style="left:24px;top:178px"><code>santa.eif</code> の中身</div>
+  <div class="colh c" style="left:336px;width:96px;top:178px">PCR0</div>
+  <div class="colh c" style="left:440px;width:96px;top:178px">PCR1</div>
+  <div class="colh c" style="left:544px;width:96px;top:178px">PCR2</div>
+  <div class="colh c" style="left:648px;width:96px;top:178px">PCR8</div>
+
+  <div class="stack" style="top:212px">
+    <div class="sec" style="top:0;height:48px"><b>カーネル</b></div>
+    <div class="sec" style="top:48px;height:48px"><b>カーネルのコマンドライン</b></div>
+    <div class="sec" style="top:96px;height:72px"><b>最初の ramdisk</b><span>起動用の部分</span></div>
+    <div class="sec" style="top:168px;height:72px"><b>2 つ目以降の ramdisk</b><span>コンテナイメージの中身</span></div>
+    <div class="sec" style="top:240px;height:72px"><b>署名</b><span>署名したときだけ</span></div>
+    <div class="sec" style="top:312px;height:48px"><b>メタデータ</b></div>
+  </div>
+  <!-- 帯の上下端は、測る部分の上端と下端にそろえる（stack の top 212 + 各部分の位置） -->
+  <div class="bar hot" style="left:360px;top:212px;height:240px"></div>
+  <div class="bar" style="left:464px;top:212px;height:168px"></div>
+  <div class="bar hot" style="left:568px;top:380px;height:72px"></div>
+  <div class="bar grey" style="left:672px;top:452px;height:72px"></div>
+  <div class="txt grey" style="left:336px;top:537px">どの PCR にも入らない</div>
+
+  <!-- 下段: app.py を 1 行書き換えた後 -->
+  <div class="colh" style="left:24px;top:604px"><code>app.py</code> を 1 行書き換えた後</div>
+  <table class="tbl" style="top:638px">
+    <tr><th>PCR</th><th>値</th><th>理由</th></tr>
+    <tr class="hot"><td class="k">PCR0</td><td class="v">変わる</td><td>2 つ目以降の ramdisk も測るため</td></tr>
+    <tr><td class="k">PCR1</td><td class="v">変わらない</td><td>カーネルと起動用の部分は変わらないため</td></tr>
+    <tr class="hot"><td class="k">PCR2</td><td class="v">変わる</td><td>コンテナイメージの中身を測るため</td></tr>
+  </table>
+</div>
+<script>
+window.addEventListener('load', async () => { await document.fonts.ready;
+  poly([[178, 84], [311, 84]]);
+  poly([[479, 84], [612, 84]]);
+  document.body.dataset.ready = '1';
+});
+</script>
+</body></html>
