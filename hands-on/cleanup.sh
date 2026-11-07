@@ -158,7 +158,7 @@ elif [[ -n "${SG_ID}" ]]; then
   DELETED=""
   # インスタンスの終了直後は、ネットワークインターフェースの依存関係で失敗することがあるため、10 秒おきに最大 2 分試す
   for _ in $(seq 1 12); do
-    if aws ec2 delete-security-group --region "${REGION}" --group-id "${SG_ID}" 2>/dev/null; then
+    if aws ec2 delete-security-group --region "${REGION}" --group-id "${SG_ID}" >/dev/null 2>&1; then
       DELETED="yes"
       break
     fi
