@@ -18,5 +18,7 @@ RUN dnf install -y python3 python3-pip openssl iproute && dnf clean all
 RUN pip3 install --no-cache-dir boto3==1.42.97
 COPY --from=nsm-builder /build/aws-nitro-enclaves-nsm-api/target/release/libnsm.so /usr/lib64/libnsm.so
 ENV KMS_REGION=ap-northeast-1
+# boto3 1.42.97 は、Python 3.9 のサポートを 2026-04-29 に終えたことを知らせる PythonDeprecationWarning を出す。動作には影響しないため、この警告だけを抑える
+ENV PYTHONWARNINGS="ignore:Boto3 will no longer support Python"
 COPY run.sh app.py /app/
 CMD ["/bin/sh", "/app/run.sh"]
