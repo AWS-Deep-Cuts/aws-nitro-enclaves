@@ -1307,8 +1307,10 @@ Enclave を停止し、`app.py` を元に戻します。
 
 ```bash
 nitro-cli terminate-enclave --enclave-name santa-tampered
-cp enclave/app.py.orig enclave/app.py
+\cp enclave/app.py.orig enclave/app.py
 ```
+
+Amazon Linux 2023 の root では、`cp` が `cp -i` の別名になっていて、上書きのたびに確認を求めます。`-f` を付けても確認は止まりません。`cp` の前の `\` は、別名を使わずに `cp` を実行する指定です。
 
 <!-- 画面写真: Session Manager のターミナル。PCR0・PCR1・PCR2 の比較の 3 行を枠で囲む -->
 
