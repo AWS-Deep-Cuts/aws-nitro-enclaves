@@ -642,7 +642,7 @@ nitro-cli build-enclave --docker-uri santa-enclave:latest --output-file santa.ei
 ```json
 {
   "Measurements": {
-    "HashAlgorithm": "Sha384 { ... }",
+    "HashAlgorithm": "Sha512_48 { .. }",
     "PCR0": "…（96 桁の 16 進）",
     "PCR1": "…",
     "PCR2": "…"
@@ -650,7 +650,7 @@ nitro-cli build-enclave --docker-uri santa-enclave:latest --output-file santa.ei
 }
 ```
 
-**測定値**は、Enclave イメージの中身から計算した SHA-384 のハッシュ値です。`nitro-cli` は、イメージの部分ごとにハッシュ値を計算し、PCR と呼ぶ番号付きの欄に記録します。中身が 1 バイトでも違えば、値が変わります。ramdisk は、メモリの上に展開して使うファイルシステムのデータです。
+**測定値**は、Enclave イメージの中身から計算した SHA-384 のハッシュ値です。`nitro-cli` は、イメージの部分ごとにハッシュ値を計算し、PCR と呼ぶ番号付きの欄に記録します。中身が 1 バイトでも違えば、値が変わります。ramdisk は、メモリの上に展開して使うファイルシステムのデータです。`HashAlgorithm` の `Sha512_48` は、SHA-512 と同じ計算で 48 バイト（384 ビット）の値を出す SHA-384 を表します。`nitro-cli` は、内部の型の名前をそのまま表示します。
 
 | PCR | 測る対象 | 変わるとき |
 | --- | --- | --- |
