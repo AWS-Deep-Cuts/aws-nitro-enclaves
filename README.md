@@ -401,9 +401,9 @@ Enclave には、ディスク・外部のネットワーク・対話的なアク
 
 ### 3-1. 親インスタンスに接続する
 
-EC2 コンソールの左のメニューから「インスタンス」を選び、`aws-deepcuts-enclave-parent` を選択して「接続」を押します。「Session Manager」タブを開き、「接続」を押します。ブラウザの新しいタブに、Session Manager のターミナルが開きます。
+EC2 コンソールの左のメニューから「インスタンス」を選び、`aws-deepcuts-enclave-parent` を選択して「接続」を押します。「ウェブブラウザで」タブの「接続方法を選択」で「SSM セッションマネージャー」を選び、「接続」を押します。ブラウザの新しいタブに、Session Manager のターミナルが開きます。
 
-<!-- 画面写真: EC2 コンソールの「インスタンスに接続」の Session Manager タブ。「接続」ボタンを枠で囲む -->
+<!-- 画面写真: EC2 コンソールの「インスタンスに接続」の「ウェブブラウザで」タブ。「SSM セッションマネージャー」と「接続」ボタンを枠で囲む -->
 
 ターミナルで、root の権限に切り替えます。以降、Session Manager のターミナルのコマンドは、すべて root として実行します。
 
@@ -479,7 +479,7 @@ systemctl enable --now nitro-enclaves-allocator.service
 
 ```bash
 nproc
-lscpu | grep -i 'line'
+lscpu | grep -E '^(On|Off)-line'
 ```
 
 `lscpu` の `On-line CPU(s) list` は親インスタンスが使える CPU の番号、`Off-line CPU(s) list` は Enclave 用に切り出した CPU の番号です。
@@ -490,7 +490,7 @@ Enclave 用に確保したメモリを表示します。
 grep -H . /sys/kernel/mm/hugepages/hugepages-*/nr_hugepages
 ```
 
-アロケーターは、物理的に連続したメモリの領域を、ヒュージページの単位で確保します。ヒュージページは、2 MiB か 1 GiB の大きなページです。出力のファイル名の `hugepages-2048kB` は 2 MiB のページ、`hugepages-1048576kB` は 1 GiB のページを表し、行の最後の数がページの数です。
+アロケーターは、物理的に連続したメモリの領域を、ヒュージページの単位で確保します。ヒュージページは、2 MiB か 1 GiB の大きなページです。出力のファイル名の `hugepages-2048kB` は 2 MiB のページ、`hugepages-1048576kB` は 1 GiB のページを表し、行の最後の数がページの数です。たとえば `hugepages-1048576kB/nr_hugepages:3` は、1 GiB × 3 で 3,072 MiB を確保したことを表します。2026 年 11 月の検証（c6i.xlarge）では、1 GiB のページで確保され、2 MiB のページの数は 0 でした。
 
 ### 3-3. vsock-proxy を起動する
 
@@ -513,7 +513,7 @@ grep 'ap-northeast-1' /etc/nitro_enclaves/vsock-proxy.yaml
 
 > **この手順で確かめること**
 > - **やること**: 2 回の `nproc` の結果、`lscpu` の `On-line` と `Off-line` の行、ヒュージページの数を比べます。`systemctl status` の出力で、vsock-proxy の状態の行と、起動したコマンドの行を読みます。
-> - **期待する結果**: `nproc` の結果は 4 から 2 に減ります。`Off-line` の CPU の番号に、0 は含まれません。ヒュージページの数とページの大きさを掛けて足すと、合計 3,072 MiB になります。2 MiB と 1 GiB のどちらのページで確保されるかは、環境によって異なるため、観察してください。vsock-proxy の状態は `active (running)` で、起動したコマンドに `8000 kms.ap-northeast-1.amazonaws.com 443` が含まれます。`grep` は、`kms.ap-northeast-1.amazonaws.com` の行を表示します。<!-- 要確認: 実機の lscpu の表示 -->
+> - **期待する結果**: `nproc` の結果は 4 から 2 に減ります。`Off-line` の CPU の番号に、0 は含まれません。ヒュージページの数とページの大きさを掛けて足すと、合計 3,072 MiB になります。2026 年 11 月の検証では、1 GiB のページが 3 つでした。2 MiB と 1 GiB のどちらのページで確保されるかは、環境によって異なる可能性があるため、観察してください。vsock-proxy の状態は `active (running)` で、起動したコマンドに `8000 kms.ap-northeast-1.amazonaws.com 443` が含まれます。`grep` は、`kms.ap-northeast-1.amazonaws.com` の行を表示します。
 > - **ここから分かること**: Enclave の CPU とメモリは、親インスタンスから切り出されます。切り出した CPU は、親インスタンスの OS から見えなくなります。CPU 0 は親インスタンスに残ります。Enclave から KMS への唯一の経路は親インスタンスの vsock-proxy で、転送先は許可リストで限られています。
 
 ## ４．Enclave イメージを作成して測定値を確かめる
