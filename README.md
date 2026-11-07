@@ -1114,9 +1114,9 @@ nitro-cli terminate-enclave --enclave-name santa-debug
 
 > **この手順で確かめること**
 > - **やること**: `show-attestation.py` の PCR0 の行、`describe-enclaves` の PCR0、`build-output.json` の PCR0 の 3 つを比べます。`client.py` の表示と、2 つ目のセッションの Enclave のコンソールの表示を読みます。
-> - **期待する結果**: アテステーション文書の PCR0 は、0 が 96 桁並びます。`describe-enclaves` の PCR0 は 0 ではなく、`build-output.json` の PCR0 と一致します。`Flags` は `DEBUG_MODE` です。`client.py` は `Enclave の応答: error（AccessDeniedException）` と表示します。Enclave のコンソールには、要求を受け付けたログと、KMS が Decrypt を拒否したログが表示されます。希望は表示されません。
-> - **ここから分かること**: デバッグモードでは、運営者が Enclave のコンソールの出力を読めます。そのかわり、アテステーション文書の PCR0 は 0 になります。`describe-enclaves` が表示する PCR0 は Enclave イメージのファイルから計算した値で、KMS が比べる値ではありません。キーポリシーの条件は手順 4 の PCR0 であるため、KMS は、デバッグモードの Enclave に復号を許可しません。
-> - **観察項目**: Enclave のコンソールの `この Enclave の PCR0（NSM の DescribePCR）:` の行の値も読んでください。デバッグモードでこの値が 0 になるかは、確かめられていません。<!-- 要確認: デバッグモードの DescribePCR の値 -->
+> - **期待する結果**: アテステーション文書の PCR0 は、0 が 96 桁並びます。PCR1 と PCR2 も 0 になります。`describe-enclaves` の PCR0 は 0 ではなく、`build-output.json` の PCR0 と一致します。`Flags` は `DEBUG_MODE` です。`client.py` は `Enclave の応答: error（AccessDeniedException）` と表示します。Enclave のコンソールには、要求を受け付けたログと、KMS が Decrypt を拒否したログが表示されます。希望は表示されません。
+> - **ここから分かること**: デバッグモードでは、運営者が Enclave のコンソールの出力を読めます。そのかわり、アテステーション文書の PCR0〜PCR2 は 0 になります。`describe-enclaves` が表示する PCR0 は Enclave イメージのファイルから計算した値で、KMS が比べる値ではありません。キーポリシーの条件は手順 4 の PCR0 であるため、KMS は、デバッグモードの Enclave に復号を許可しません。
+> - **観察項目**: Enclave のコンソールの `この Enclave の PCR0（NSM の DescribePCR）:` の行の値も読んでください。2026 年 11 月の検証では、デバッグモードでは、この値も 0 が 96 桁並びました。
 
 ## ９．本番モードの Enclave で組み合わせを決める
 
