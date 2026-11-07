@@ -1190,7 +1190,7 @@ aws s3 cp results/ "s3://${BUCKET_NAME}/results/" --recursive --region "${REGION
 
 > **この手順で確かめること**
 > - **やること**: `describe-enclaves` の `Flags`、`nitro-cli console` のエラー、`client.py` の表示を読みます。
-> - **期待する結果**: `Flags` は `NONE` です。`nitro-cli console` は、エラーコード E44 と「The enclave was not started with the debug flag set, include '--debug-mode' in the run-enclave command」を表示して終わります。`client.py` は 4 人分の結果のファイルを作成し、「運営者に見える希望: なし」と表示します。結果のファイルの中身は、読める形ではありません。
+> - **期待する結果**: `Flags` は `NONE` です。`nitro-cli console` は、エラーコード E44（Enclave console connection failure）と、エラーのログのファイル `/var/log/nitro_enclaves/err<時刻>.log` の場所を表示して終わります。エラーの理由「The enclave was not started with the debug flag set, include '--debug-mode' in the run-enclave command」は、画面ではなく、このログのファイルに書かれています。`client.py` は 4 人分の結果のファイルを作成し、「運営者に見える希望: なし」と表示します。結果のファイルの中身は、読める形ではありません。
 > - **ここから分かること**: 本番モードの Enclave の中は、運営者からは見えません。Enclave は KMS から希望を受け取り、組み合わせを決め、各参加者の公開鍵で暗号化した結果だけを返しました。運営者の手元にあるのは、暗号文だけです。
 
 ## １０．のぞき見 3：アテステーション文書を横取りして KMS に送る
