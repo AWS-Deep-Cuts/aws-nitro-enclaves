@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<!-- santa-after: Enclave と KMS を加えると、運営者は使用中の希望を読めない（記事「AWS Nitro Enclavesとは？」の冒頭）。
+     本文の 3 か所の変化: 1 組み合わせを計算するメモリが Enclave に移る（親インスタンスの root からも読めない）
+     2 上の KMS から Enclave への矢印（キーポリシーで決めた Enclave にだけ、復号の結果を渡す）3 Enclave から参加者への矢印（参加者の公開鍵で暗号化した結果）
+     中身は santa.js（santa-before と santa-after で共通の枠組み。body の data-mode で描き分ける）。根拠とファクトシートの番号も santa.js の先頭に書いた。
+     ファクトシート: ne-001・ne-002（隔離）、ne-081（KMS が Enclave の公開鍵で暗号化して返す）。設計: DESIGN.md §6-2 -->
+<link rel="stylesheet" href="diagram.css">
+<link rel="stylesheet" href="deepcuts.css">
+<link rel="stylesheet" href="ne.css">
+<script src="wires.js"></script>
+<script src="lines.js"></script>
+</head><body data-mode="after">
+<div id="fig"><svg id="wires"></svg></div>
+<script src="santa.js"></script>
+</body></html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<!-- architecture: ハンズオンの構成図（README の冒頭「構築するアーキテクチャ」、記事「ハンズオンはこちら！」）。
+     左: あなたが参加者とキーの管理者として操作する AWS CloudShell。右上: 運営者として操作する Session Manager のターミナル。右下: 東京リージョンのリソース。
+     線の上の「手順 N」は README の手順の番号（README の章立てが変わったら、ここも直す）。
+     根拠:
+     - 手順 2: aws ec2 run-instances --enclave-options Enabled=true（botocore ec2 service-2.json の EnclaveOptionsRequest。ne-015）
+     - 手順 3〜11: Session Manager のターミナルで nitro-cli（build-enclave・run-enclave・describe-enclaves・console・terminate-enclave。ne-046）と
+       hands-on/instance/client.py（attest・match）を実行する
+     - 手順 4・7・9: 親インスタンスと受け渡し用のバケットの間の aws s3 cp（4-4 で測定値と Enclave イメージを保存、7-2 で暗号化した希望を取得、9-2 で結果を保存）
+     - 手順 5・6・12: CloudShell と受け渡し用のバケットの間の aws s3 cp（5-1 で測定値 build-output.json を読む、6-5 で希望を送る、12 で結果を受け取る）
+     - 手順 5〜7: CloudShell の aws kms（5 で create-key と create-alias、6 で encrypt、7-1 でキーの管理者が decrypt を試みる）。
+       DESIGN.md §6-7 の箱 C「キーの作成と暗号化」と「手順 5・6」を、手順 7-1 の decrypt も含むように「KMS キーを操作する」「手順 5〜7」にした
+     - Enclave と vsock-proxy は vsock でつながり、vsock-proxy が KMS へ転送する（ne-061、ne-062）。
+       Enclave のアプリが文書を付けた Decrypt を送るのは、手順 8（デバッグモード）・9（本番モード）・11（書き換えたアプリ）。
+       DESIGN.md §6-7 の「手順 9」を、README の手順に合わせて「手順 8・9・11」にした。
+       手順 7-2 と手順 10 で運営者が親インスタンスの AWS CLI から直接呼び出す aws kms decrypt は、vsock-proxy を通らないため、
+       別の黒い線「手順 7・10 運営者の Decrypt」で、親インスタンスの nitro-cli・client.py の箱から KMS キーへ引く
+     - 手順 13: aws cloudtrail lookup-events で Decrypt のイベントを一覧にする（CloudTrail のイベント履歴。ne-102、ne-106）
+     - インスタンスロール aws-deepcuts-enclave-parent-role: setup.sh が作成し、AmazonSSMManagedInstanceCore と受け渡し用のバケットの読み書きだけを許可する。
+       KMS の権限は IAM ポリシーに無く、Decrypt はキーポリシーで条件付きで許可する。IAM はグローバルなサービスのため、リージョンの枠の外に置く。線はつながない
+     - KMS キーのエイリアスは alias/aws-deepcuts-santa（図では aws-deepcuts-santa と書く）
+     設計: DESIGN.md §6-7 の座標による。ただし、CloudTrail の名前を 3 行にしたため、リージョンの枠の下辺を y 1104、AWS Cloud と CloudShell の枠の下辺を y 1200 に下げた。
+       また、aws cloudtrail が箱に収まるように、左の列の枠を x 16〜208、箱を x 40〜184 にし、箱の題を 16px にした（ラベルの列は x 208〜308）。
+     レビューによる変更: 矢印 3 の先端を親インスタンスの枠から 10px 離すため、受け渡し用のバケットの名前とアイコンを 8px 上げた（矢印 2 は y 456）。
+       Session Manager の枠の中の箱は「コマンドを入力する」とし、プログラムの名前は親インスタンスの中の箱にだけ書く。
+       運営者の Decrypt の線を加えるため、KMS キーと CloudTrail を x 548〜596（中心 572）に移し、KMS キーより下の部品を 24px 下げた。
+       矢印 6（vsock-proxy → KMS キー）は x 652 で y 800 まで下り、左へ折れて x 572 で KMS キーの上辺に入る。説明は 2 行にして線の左に置く。
+       矢印 2 の説明「手順 5・6・12」はラベルの列（幅 100px）に収まらないため、東京リージョンの枠の中（x 352〜）に置く。
+       矢印 9（運営者の Decrypt）は nitro-cli・client.py の箱の右辺から x 748 まで右へ進み、下へ折れて y 880 で左へ折れ、KMS キーの右辺に入る。
+     最終点検による変更: 矢印 9 の縦の部分が親インスタンスの枠と東京リージョンの枠から 12px しか離れていなかったため、
+       親インスタンスの枠を幅 356px（右辺 x 712）に、Enclave の枠を幅 128px に、親インスタンスの中の箱を x 576〜688 にした。
+       矢印 9 の縦の部分は x 736 で、2 つの枠から 24px 離れる。矢印 1 と矢印 6 の縦の部分は、箱の中心 x 632 を通る。
+       矢印 1 がバケットの名前と重ならないように、バケットのアイコンと名前と矢印 3 を 16px 左へ移した（中心 x 540）。
+     線はすべて水平か垂直で、線どうしは交わらない -->
+<link rel="stylesheet" href="diagram.css">
+<link rel="stylesheet" href="deepcuts.css">
+<link rel="stylesheet" href="ne.css">
+<script src="wires.js"></script>
+<script src="lines.js"></script>
+<style>
+  #fig { width: 800px; height: 1240px; }
+  .cmd { position: absolute; left: 40px; width: 144px; border: 2px solid var(--ink); background: #fff; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .cmd b { font-size: 16px; font-weight: 900; line-height: 1.3; }
+  .cmd code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; line-height: 1.5; margin-top: 2px; white-space: nowrap; }
+  .term { position: absolute; width: 120px; border: 2px solid var(--ink); background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .term .jp { font-size: 16px; font-weight: 700; line-height: 1.35; text-align: center; }
+  .term code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; line-height: 1.45; }
+  .lane > .lt.ic2 { display: flex; align-items: center; gap: 8px; }
+  .lane > .lt.ic2 img { width: 28px; height: 28px; }
+  .sub2 { position: absolute; font-size: 16px; font-weight: 500; line-height: 22px; color: #4a4843; white-space: nowrap; }
+  .lb.step b { font-weight: 900; }
+  .rnm { position: absolute; text-align: center; white-space: nowrap; }
+  .rnm b { display: block; font-size: 16px; font-weight: 900; line-height: 1.35; }
+  .rnm b.big { font-size: 18px; }
+  .rnm span { display: block; font-size: 16px; font-weight: 500; line-height: 1.35; color: #4a4843; }
+  .rnm code { font-family: var(--font-mono); font-weight: 800; font-size: 15px; color: #4a4843; }
+  .role { position: absolute; white-space: nowrap; }
+  .role b { display: block; font-size: 17px; font-weight: 900; line-height: 1.3; }
+  .role span { display: block; font-size: 16px; font-weight: 500; line-height: 1.35; color: #4a4843; }
+</style>
+</head><body>
+<div id="fig">
+  <svg id="wires"></svg>
+
+  <!-- 左: AWS CloudShell（参加者とキーの管理者として操作する） -->
+  <div class="lane" style="left:16px;top:16px;width:192px;height:1208px"><span class="lt ic2"><img src="../icons/AWSCloudShell.svg">AWS CloudShell</span></div>
+  <div class="sub2" style="left:30px;top:56px">参加者と<br>キーの管理者</div>
+  <div class="cmd" id="cP" style="top:124px;height:88px"><b>鍵の組を作成し<br>結果を開く</b><code>openssl</code></div>
+  <div class="cmd" id="cA" style="top:404px;height:104px"><b>測定値を読み<br>希望を送り<br>結果を受け取る</b><code>aws s3 cp</code></div>
+  <div class="cmd" id="cB" style="top:654px;height:84px"><b>親インスタンスを<br>起動する</b><code>aws ec2</code></div>
+  <div class="cmd" id="cC" style="top:838px;height:84px"><b>KMS キーを<br>操作する</b><code>aws kms</code></div>
+  <div class="cmd" id="cD" style="top:962px;height:84px"><b>KMS の判定を<br>振り返る</b><code>aws cloudtrail</code></div>
+
+  <!-- 右上: Session Manager のターミナル（運営者として操作する） -->
+  <div class="lane" style="left:308px;top:16px;width:476px;height:172px"><span class="lt ic2"><img src="../icons/AWSSystemsManagerSessionManager.svg">Session Manager のターミナル</span></div>
+  <div class="sub2" style="left:322px;top:56px">運営者として root の権限で操作する</div>
+  <div class="term" style="left:572px;top:108px;height:56px"><span class="jp">コマンドを<br>入力する</span></div>
+
+  <!-- 右下: AWS Cloud > 東京リージョン -->
+  <div class="grp cloud" style="left:308px;top:240px;width:476px;height:984px">
+    <div class="gl"><img src="../icons/AWSCloudlogo.svg"><span class="en">AWS Cloud</span></div>
+  </div>
+  <div class="grp region" style="left:332px;top:312px;width:428px;height:816px">
+    <div class="gl"><img src="../icons/Region.svg"><span class="ja">東京リージョン</span><span class="code">ap-northeast-1</span></div>
+  </div>
+
+  <!-- 行 1: 受け渡し用のバケット。名前はアイコンの上（アイコンの下と左右は線が通る） -->
+  <div class="rnm" style="left:460px;width:160px;top:376px"><b>受け渡し用のバケット</b><span>希望・結果・測定値</span></div>
+  <img class="ic" src="../icons/AmazonSimpleStorageServiceBucket.svg" style="left:516px;top:432px;width:48px;height:48px">
+
+  <!-- 行 2: 親インスタンスと Enclave -->
+  <div class="grp" style="left:356px;top:536px;width:356px;height:248px">
+    <div class="gl"><img src="../icons/AmazonEC2Instance.svg"><span class="ja">親インスタンス</span></div>
+  </div>
+  <div class="grp enc" style="left:380px;top:608px;width:128px;height:152px">
+    <div class="gl"><img src="../icons/AWSNitroEnclaves.svg"><span class="ja">Enclave</span></div>
+  </div>
+  <div class="term" style="left:404px;top:680px;width:80px;height:56px"><code>app.py</code></div>
+  <div class="term" style="left:576px;top:608px;width:112px;height:56px"><code>nitro-cli</code><code>client.py</code></div>
+  <div class="term" style="left:576px;top:680px;width:112px;height:56px"><code>vsock-proxy</code></div>
+
+  <!-- 行 3: KMS キー -->
+  <img class="ic" src="../icons/AWSKeyManagementService.svg" style="left:548px;top:856px;width:48px;height:48px">
+  <div class="rnm" style="left:482px;width:180px;top:910px"><b class="big">KMS キー</b><code>aws-deepcuts-santa</code></div>
+
+  <!-- 行 4: CloudTrail -->
+  <img class="ic" src="../icons/AWSCloudTrail.svg" style="left:548px;top:980px;width:48px;height:48px">
+  <div class="rnm" style="left:482px;width:180px;top:1034px"><b class="big">CloudTrail</b><span>イベント履歴</span><span>KMS の判定を記録する</span></div>
+
+  <!-- 行 5: インスタンスロール（IAM はグローバルなサービスのため、リージョンの枠の外） -->
+  <img class="ic" src="../icons/AWSIdentityAccessManagementRole.svg" style="left:344px;top:1154px;width:40px;height:40px">
+  <div class="role" style="left:396px;top:1150px"><b>インスタンスロール</b><span>IAM ポリシーに KMS の権限は無い</span></div>
+
+  <!-- 線の説明 -->
+  <div class="lb step r" style="right:176px;top:203px"><b>手順 3〜11</b></div>
+  <div class="lb step" id="l2b" style="left:352px;top:428px"><b>手順 5・6・12</b></div>
+  <div class="lb step r" style="right:278px;top:501px"><b>手順 4・7・9</b></div>
+  <div class="lb step" id="l4" style="top:668px"><b>手順 2</b></div>
+  <div class="lb hot" id="lv" style="left:520px;top:679px">vsock</div>
+  <div class="lb step r" style="right:252px;top:808px"><b>手順 8・9・11</b><br>Decrypt と文書</div>
+  <div class="lb step r" style="right:72px;top:816px"><b>手順 7・10</b><br>運営者の Decrypt</div>
+  <div class="lb step" id="l7" style="top:852px"><b>手順 5〜7</b></div>
+  <div class="lb step" id="l8" style="top:976px"><b>手順 13</b></div>
+</div>
+<script>
+window.addEventListener('load', async () => { await document.fonts.ready;
+  // ラベルの列（x 208〜308）の中央 x 258 に、左の列から右へ出る線の説明を置く
+  for (const id of ['l4', 'l7', 'l8']) { const e = document.getElementById(id); e.style.left = (258 - e.offsetWidth / 2) + 'px'; }
+  { const e = document.getElementById('lv'); e.style.left = (542 - e.offsetWidth / 2) + 'px'; }   // vsock の説明を矢印 5 の中央 x 542 に置く
+  poly([[632, 168], [632, 604]]);                     // 1: Session Manager のターミナル → 親インスタンスの nitro-cli・client.py
+  poly([[188, 456], [512, 456]]);                     // 2: CloudShell の aws s3 cp → 受け渡し用のバケット
+  poly([[540, 484], [540, 526]], {both: true});       // 3: 親インスタンス ↔ 受け渡し用のバケット（先端は親インスタンスの枠の上辺 y 536 から 10px 離す）
+  poly([[188, 696], [352, 696]]);                     // 4: CloudShell の aws ec2 → 親インスタンス
+  poly([[512, 708], [572, 708]], {hot: true});        // 5: Enclave → vsock-proxy（vsock）
+  poly([[632, 740], [632, 800], [572, 800], [572, 852]], {hot: true});   // 6: vsock-proxy → KMS キー（Decrypt と文書）
+  poly([[188, 880], [544, 880]]);                     // 7: CloudShell の aws kms → KMS キー
+  poly([[188, 1004], [544, 1004]], {dash: true});     // 8: CloudShell の aws cloudtrail → CloudTrail
+  poly([[692, 636], [736, 636], [736, 880], [600, 880]]);   // 9: 親インスタンスの nitro-cli・client.py → KMS キー（運営者の Decrypt）
+  document.body.dataset.ready = '1';
+});
+</script>
+</body></html>
