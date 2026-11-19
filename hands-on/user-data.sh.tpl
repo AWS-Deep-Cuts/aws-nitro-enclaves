@@ -40,6 +40,25 @@ systemctl enable --now aws-deepcuts-deadline.service
 # nitro-cli と、Enclave イメージの作成に使う docker を入れる。
 # アロケーターと vsock-proxy のサービスは、README の手順 3 で有効にする（ここでは有効にしない）。
 dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel python3-pip
+
+# vsock-proxy のサービスは、bash が IMDS からリージョンを取得してから exec で vsock-proxy に置き換わる。
+# systemctl start はその前に戻るため、直後の systemctl status には bash と未展開の kms.${REGION} が表示される。
+# パッケージのユニットはそのまま使い、起動の後に vsock-proxy への置き換わりを待つ処理だけを足す（最大 10 秒）
+cat > /usr/local/sbin/aws-deepcuts-wait-vsock-proxy.sh <<'EOS'
+#!/bin/bash
+for _ in $(seq 1 50); do
+  [[ "$(cat "/proc/${MAINPID:-0}/comm" 2>/dev/null)" == "vsock-proxy" ]] && exit 0
+  sleep 0.2
+done
+exit 0
+EOS
+chmod 0755 /usr/local/sbin/aws-deepcuts-wait-vsock-proxy.sh
+install -d -m 0755 /etc/systemd/system/nitro-enclaves-vsock-proxy.service.d
+cat > /etc/systemd/system/nitro-enclaves-vsock-proxy.service.d/aws-deepcuts-wait.conf <<'EOS'
+[Service]
+ExecStartPost=/usr/local/sbin/aws-deepcuts-wait-vsock-proxy.sh
+EOS
+systemctl daemon-reload
 systemctl enable --now docker
 pip3 install cbor2==5.9.0
 

@@ -21,7 +21,8 @@ import time
 import urllib.request
 
 APP_PORT = 5000
-RETRY_SECONDS = 5
+RETRY_SECONDS = 1
+QUIET_RETRY_SECONDS = 15
 RETRY_LIMIT_SECONDS = 60
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -58,8 +59,10 @@ def instance_role_credentials():
 
 
 def connect(cid):
-    """Enclave の起動直後は、アプリの待ち受けが始まっていないことがあるため、やり直す"""
-    deadline = time.time() + RETRY_LIMIT_SECONDS
+    """Enclave の起動直後は、アプリの待ち受けが始まっていないことがあるため、やり直す。
+    起動直後の失敗は想定どおりのため、QUIET_RETRY_SECONDS までは表示せずにやり直す"""
+    start = time.time()
+    deadline = start + RETRY_LIMIT_SECONDS
     while True:
         sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         try:
@@ -71,7 +74,8 @@ def connect(cid):
                 print(f"Enclave（CID {cid}）のポート {APP_PORT} に接続できません: {e}", file=sys.stderr)
                 print("nitro-cli describe-enclaves で、Enclave が起動しているかを確かめてください。", file=sys.stderr)
                 sys.exit(1)
-            print(f"  接続できないため、{RETRY_SECONDS} 秒後にやり直します（{e}）")
+            if time.time() - start >= QUIET_RETRY_SECONDS:
+                print(f"  接続できないため、{RETRY_SECONDS} 秒後にやり直します（{e}）")
             time.sleep(RETRY_SECONDS)
 
 

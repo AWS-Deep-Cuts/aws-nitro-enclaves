@@ -9,8 +9,6 @@
 > - 操作には 2 つの画面を使います。1 つは、ブラウザから AWS CLI のコマンドを実行できる AWS CloudShell です。もう 1 つは、Session Manager のターミナルです。Session Manager は AWS Systems Manager の機能で、ブラウザから EC2 インスタンスのシェルを使えます。
 > - Enclave を動かす EC2 インスタンスの OS は、Amazon Linux 2023 です。
 
-<!-- 要確認: setup.sh が東京リージョンで選ぶインスタンスタイプ（c6i.xlarge・c5.xlarge・c6a.xlarge のどれか） -->
-
 > ⚠️ **コストに関する注意**
 >
 > このハンズオンでは、EC2 インスタンスを 1 台起動し、その中に Enclave と呼ぶ隔離された VM（Virtual Machine）を作成します。Enclave を作成する元の EC2 インスタンスを、親インスタンスと呼びます。親インスタンスには、4 vCPU の EC2 インスタンスを使います。vCPU は、インスタンスに割り当てられた仮想の CPU です。親インスタンスは、初回の起動から 4 時間で自動で終了するように設定します。
@@ -63,7 +61,7 @@ Enclave のアプリは、誰に贈るかと、その相手の希望を書いた
 | KMS が比べるのは文書の PCR0 で、`describe-enclaves` が表示する PCR0 ではない。デバッグモードでは、2 つの値が食い違う | 8 |
 | KMS は復号したデータを Enclave の公開鍵で暗号化して返すため、文書を横取りしても読めない | 10 |
 | 運営者は、参加者の希望と組み合わせを読めない。キーの管理者も、キーポリシーを書き換えない限り読めない。このキーポリシーは、グラントの作成も許可していない。結果を読めるのは、参加者が自分の結果だけ | 7〜12 |
-| CloudTrail に、許可された要求に付いていた文書の PCR が記録される。拒否された要求には記録されない。送ったのが Enclave か運営者かは、記録からは区別できない | 13 |
+| CloudTrail に、許可された要求に付いていた文書の PCR0 が記録される。拒否された要求には記録されない。送ったのが Enclave か運営者かは、記録からは区別できない | 13 |
 | 後片付けの後に残るのは、削除を待つ KMS キーだけ | 14 |
 
 用語の意味と仕組みは、解説記事で説明しています。先に記事の「AWS Nitro Enclavesとは？」と「仕組み」を読んでおくと、各手順で何を確かめているのかが分かりやすくなります。
@@ -102,7 +100,13 @@ Enclave のアプリは、誰に贈るかと、その相手の希望を書いた
   aws freetier get-account-plan-state --region us-east-1 --query accountPlanType --output text
   ```
 
-  <!-- 要確認: 無料プランのアカウントで c6i.xlarge を起動できるか。このコマンドが古いアカウントで何を返すか -->
+  アカウントによっては、プランの情報が無く、次のエラーになります。2026 年 11 月の検証に使ったアカウントでは、このエラーになりました。このアカウントでも、ハンズオンのすべての手順を実行できました。
+
+  ```text
+  aws: [ERROR]: An error occurred (ResourceNotFoundException) when calling the GetAccountPlanState operation: Missing data for account: 111122223333
+  ```
+
+  <!-- 要確認: 無料プランのアカウントで c6i.xlarge を起動できるか -->
 
 - CloudShell を開いた IAM ユーザーまたは IAM ロールに、EC2・IAM・S3・KMS・Systems Manager・CloudTrail の操作権限があること。`AdministratorAccess` 相当の権限で実施するのが簡単です。
 
@@ -224,6 +228,8 @@ bash ./setup.sh
 # ✅ セットアップが完了しました！
 ```
 
+`setup.sh` は、候補の c6i.xlarge・c5.xlarge・c6a.xlarge のうち、Nitro Enclaves に対応し、パブリック IPv4 アドレスを自動で割り当てる既定のサブネットがある AZ で提供されている最初のタイプを選びます。2026 年 11 月の検証では、東京リージョンで c6i.xlarge が選ばれ、`setup.sh` は約 40 秒で終わりました。
+
 `setup.sh` は、次のリソースとファイルを作成します。
 
 | リソース | 名前 | 用途 |
@@ -236,7 +242,7 @@ bash ./setup.sh
 インスタンスロールは、親インスタンスに付ける IAM ロールです。インスタンスの中のプログラムは、このロールの権限で AWS の API を呼び出します。インスタンスプロファイルは、EC2 インスタンスに IAM ロールを付けるときに指定するリソースで、ロールと同じ名前で作成します。ユーザーデータは、EC2 インスタンスの初回の起動時に実行されるスクリプトです。このハンズオンのユーザーデータは、次の 3 つを行います。
 
 - 初回の起動から 4 時間後にインスタンスを終了する予約を行う。終了の時刻をファイルに保存し、インスタンスを再起動しても、起動のたびに同じ時刻へ予約し直す
-- `nitro-cli` を含むパッケージ `aws-nitro-enclaves-cli` と、アテステーション文書の表示に使う Python のライブラリ `cbor2` をインストールする
+- `nitro-cli` を含むパッケージ `aws-nitro-enclaves-cli` と、アテステーション文書の表示に使う Python のライブラリ `cbor2` をインストールする。Enclave イメージの作成に使う Docker も有効にする
 - 受け渡し用のバケットの `app/` から、Enclave のアプリと補助のプログラムを `/root/santa` にダウンロードする。また、バケットの名前とリージョンを書いた `/root/santa/santa.env` を作成する
 
 `setup.sh` は、作成したリソースの名前・ID・ARN を `resource-ids.env` に保存しました。ARN（Amazon Resource Name）は、AWS のリソースを一意に指す名前です。次のコマンドでこのファイルを読み込むと、以降のコマンドで変数として使えます。
@@ -270,7 +276,7 @@ cat resource-ids.env
 <!-- 画面写真: IAM コンソールの aws-deepcuts-enclave-parent-role の「許可」タブ。2 つのポリシーを枠で囲み、KMS の権限が無いことが分かるようにする -->
 
 > **この手順で確かめること**
-> - **やること**: IAM コンソールの左のメニューから「ロール」を選び、`aws-deepcuts-enclave-parent-role` を開いて「許可」タブを確認します。
+> - **やること**: IAM コンソールの左のメニューから「ロール」を選び、`aws-deepcuts-enclave-parent-role` を開いて「許可」タブを確認します。インラインポリシーの行の左の「+」を押すと、ポリシーの JSON が開きます。
 > - **期待する結果**: AWS 管理ポリシー `AmazonSSMManagedInstanceCore` と、インラインポリシー `aws-deepcuts-enclave-bucket` の 2 つが表示されます。インラインポリシーが許可しているのは、受け渡し用のバケットの読み書きだけです。KMS の権限はありません。
 > - **ここから分かること**: 運営者が使うインスタンスロールには、IAM ポリシーで KMS の権限を与えていません。復号の許可は、手順 5 で、キーポリシーに条件を付けて与えます。
 
@@ -288,11 +294,11 @@ aws ec2 describe-instance-types --region "${REGION}" --instance-types "${INSTANC
   --output table
 ```
 
-`NitroEnclaves` の列が `supported` であれば、このインスタンスタイプで Enclave を使えます。`vCPU` は 4、`Cores` は 2、`ThreadsPerCore` は 2 と表示されるはずです。つまり、2 つの物理コアが、それぞれ 2 つのスレッドを持っています。
+`NitroEnclaves` の列が `supported` であれば、このインスタンスタイプで Enclave を使えます。`vCPU` は 4、`Cores` は 2、`ThreadsPerCore` は 2 と表示されます。つまり、2 つの物理コアが、それぞれ 2 つのスレッドを持っています。
 
 Enclave には、CPU を物理コアの単位で渡します。また、CPU 0 とその兄弟スレッドは、親インスタンスに残します。そのため、1 コアあたり 2 スレッドの Intel や AMD のインスタンスタイプでは、親インスタンスに 4 vCPU 以上が必要です。このハンズオンでは、2 vCPU を親インスタンスに残し、もう 1 つの物理コアの 2 vCPU を Enclave に渡します。
 
-`--instance-types` に別のインスタンスタイプを指定して、結果を比べてもかまいません。たとえば `t3.xlarge` を指定し、`NitroEnclaves` の列に何が表示されるかを観察してください。
+`--instance-types` に別のインスタンスタイプを指定して、結果を比べてもかまいません。たとえば `t3.xlarge` を指定すると、`NitroEnclaves` の列に `unsupported` と表示されます。t3.xlarge も 4 vCPU ですが、Enclave は使えません。
 
 ### 2-2. 親インスタンスを起動する
 
@@ -363,20 +369,18 @@ aws ssm describe-instance-information --region "${REGION}" \
   --query 'InstanceInformationList[0].PingStatus' --output text
 ```
 
-`Online` と表示されるまで、数分おきにこのコマンドを実行し直してください。`None` は、まだ登録されていないことを表します。
-
-<!-- 要確認: AL2023 の AMI で SSM エージェントが登録されるまでの時間 -->
+`Online` と表示されるまで、数分おきにこのコマンドを実行し直してください。`None` は、まだ登録されていないことを表します。2026 年 11 月の検証では、`run-instances` から 3 分以内に `Online` になりました。
 
 <!-- 画面写真: EC2 コンソールのインスタンスの詳細。Nitro Enclave の項目を枠で囲む -->
 
 > **この手順で確かめること**
-> - **やること**: EC2 コンソールの左のメニューから「インスタンス」を選び、`aws-deepcuts-enclave-parent` を開いて、「詳細」タブで Nitro Enclave の項目を確認します。
-> - **期待する結果**: Nitro Enclave の項目が有効になっています。CLI の `NitroEnclaves` の列は `True` です。<!-- 要確認: コンソールの項目名と表示 -->
+> - **やること**: EC2 コンソールの左のメニューから「インスタンス」を選び、`aws-deepcuts-enclave-parent` を開いて、「詳細」タブの「インスタンスの詳細」で「Enclaves のサポート」の項目を確認します。
+> - **期待する結果**: 「Enclaves のサポート」が「有効」です。CLI の `State` は `running`、`NitroEnclaves` の列は `True`、`PingStatus` は `Online` です。
 > - **ここから分かること**: Enclave を使えるかどうかは、インスタンスの起動時に、EC2 の設定で決めます。この時点では、Enclave はまだ起動していません。Enclave を起動するのは EC2 の API ではなく、親インスタンスの中の `nitro-cli` です。
 
-> **Note**: 親インスタンスは、初回の起動から 4 時間で自動で終了します。インスタンスを再起動しても、終了の時刻は変わりません。ユーザーデータが作成した systemd のユニット `aws-deepcuts-deadline.service` が、起動のたびに同じ時刻へ終了を予約し直すためです。
+> **Note**: 親インスタンスは、初回の起動から 4 時間で自動で終了します。インスタンスを再起動しても、終了の時刻は変わりません。ユーザーデータが作成した systemd のユニット `aws-deepcuts-deadline.service` が、起動のたびに同じ時刻へ終了を予約し直すためです。ただし、予約は分の単位に切り上げるため、再起動の後は最大で 1 分遅れます。2026 年 11 月の検証では、再起動の前の予約が 22:10:42、再起動の後の予約が 22:11:33（UTC）でした。
 >
-> <!-- 要確認: 4 時間後に terminated になること。AL2023 で、再起動の後に予約が入ること（journalctl -u aws-deepcuts-deadline） -->
+> <!-- 要確認: 4 時間後に terminated になること -->
 >
 > 時間が足りないときは、Session Manager のターミナルで root として次の 2 行を実行し、終了の時刻を書き換えます。この例では、終了の時刻を今から 60 分後にします。延ばした分だけ費用が増えます。1 時間あたり約 0.22 USD です。
 >
@@ -387,7 +391,7 @@ aws ssm describe-instance-information --region "${REGION}" \
 >
 > `shutdown -c` は実行しないでください。`shutdown -c` を実行すると、そのインスタンスが次に起動するまで、自動の終了が働かなくなります。そのまま放置すると、1 日あたり最大で約 5.4 USD がかかります。内訳は、EC2 の 0.214 USD × 24 時間、パブリック IPv4 アドレスの 0.005 USD × 24 時間、30 GB の EBS の 1 日分です。
 >
-> 自動で終了した場合は、手順 2-2 からやり直します。手順 4 で受け渡し用のバケットに保存した Enclave イメージを使えば、測定値は変わりません。詳しくは手順 4 の Note を確認してください。
+> 自動で終了した場合は、手順 2-2 からやり直します。手順 4 で受け渡し用のバケットに保存した Enclave イメージを使えば、測定値は変わりません。詳しくは手順 4 の Note を確認してください。親インスタンスを起動し直すたびに、費用は最大で約 0.89 USD 増えます。
 
 ## ３．親インスタンスで Enclave 用の CPU とメモリを確保する
 
@@ -435,7 +439,7 @@ aws --version
 date -d "@$(cat /var/lib/aws-deepcuts/deadline)"
 ```
 
-`aws --version` は、2.11.17 以降であることを確認します。KMS の Decrypt にアテステーション文書を付ける `--recipient` のパラメータは、2023 年 5 月の AWS CLI 2.11.17 から使えます。最後の行は、初回の起動から 4 時間後の時刻を表示します。
+`aws --version` は、2.11.17 以降であることを確認します。KMS の Decrypt にアテステーション文書を付ける `--recipient` のパラメータは、2023 年 5 月の AWS CLI 2.11.17 から使えます。2026 年 11 月の検証では、dnf で Nitro CLI 1.5.0 が入り、AMI の AWS CLI は 2.38.0 でした。最後の行は、初回の起動から 4 時間後の時刻を表示します。
 
 > **Note**: Session Manager のセッションが切れたら、新しいセッションで次の 2 行を実行してから、続きの手順に進んでください。
 >
@@ -503,6 +507,8 @@ systemctl status nitro-enclaves-vsock-proxy.service --no-pager | head -n 12
 
 このサービスは、IMDS からインスタンスのリージョンを取得し、`vsock-proxy 8000 kms.<リージョン>.amazonaws.com 443` のコマンドで vsock-proxy を起動します。vsock のポート 8000 で受け取った通信を、そのリージョンの KMS のポート 443 へ転送します。
 
+`systemctl status` の出力には、`Drop-In:` の 2 行と、`ExecStartPost` の `Process:` の行も表示されます。このサービスは、bash が IMDS からリージョンを取得した後に vsock-proxy に置き換わります。ユーザーデータは、その置き換わりを `systemctl enable --now` が待つ設定を追加しています。そのため、直後の `systemctl status` の `Main PID` は `vsock-proxy` になります。
+
 vsock-proxy が転送できる宛先は、許可リスト `/etc/nitro_enclaves/vsock-proxy.yaml` に書かれた宛先だけです。東京リージョンの KMS が許可リストにあることを確認します。
 
 ```bash
@@ -541,7 +547,7 @@ Enclave イメージに入れるファイルを、1 つずつ確認します。
 cat enclave/Dockerfile
 ```
 
-Dockerfile は 2 段階に分かれています。段階 1 では、AWS が公開している NSM のライブラリ `libnsm.so` を、ソースからビルドします。NSM（Nitro Secure Module）は、Enclave の中から使える、AWS Nitro システムの部品で、アテステーション文書を発行します。段階 2 では、Python・boto3・OpenSSL を入れたコンテナイメージに、段階 1 の `libnsm.so` と、アプリの `run.sh`・`app.py` をコピーします。boto3 は、AWS SDK for Python です。
+Dockerfile は 2 段階に分かれています。段階 1 では、AWS が公開している NSM のライブラリ `libnsm.so` を、ソースからビルドします。NSM（Nitro Secure Module）は、Enclave の中から使える、AWS Nitro システムの部品で、アテステーション文書を発行します。段階 2 では、Python・boto3・OpenSSL を入れたコンテナイメージに、段階 1 の `libnsm.so` と、アプリの `run.sh`・`app.py` をコピーします。boto3 は、AWS SDK for Python です。boto3 1.42.97 は、Python 3.9 のサポートを 2026 年 4 月 29 日に終えたことを知らせる `PythonDeprecationWarning` を出します。動作には影響しないため、`ENV PYTHONWARNINGS` で、この警告だけを抑えています。
 
 ```bash
 cat enclave/run.sh
@@ -629,7 +635,7 @@ Enclave は、手順 2 で説明した IMDS に届かないため、IAM の認�
 docker build -t santa-enclave:latest enclave/
 ```
 
-`docker build` は数分かかります。Rust のツールチェーンをダウンロードして、NSM のライブラリをビルドするためです。この間も、親インスタンスの料金はかかります。<!-- 要確認: docker build の所要時間とディスクの使用量 -->
+`docker build` は 1〜2 分かかります。Rust のツールチェーンをダウンロードして、NSM のライブラリをビルドするためです。この間も、親インスタンスの料金はかかります。2026 年 11 月の検証では、`docker build` は約 1 分 20 秒で終わり、ルートボリュームの使用量は約 1.4 GB 増えました（2.2 GB から 3.6 GB）。
 
 コンテナイメージから、Enclave イメージを作成します。
 
@@ -677,7 +683,7 @@ Enclave イメージの情報を表示します。
 nitro-cli describe-eif --eif-path santa.eif
 ```
 
-`describe-eif` は、Enclave イメージのファイルから、測定値や署名の有無などの情報を読み取って表示します。表示される PCR0 は、`build-output.json` の PCR0 と同じです。
+`describe-eif` は、Enclave イメージのファイルから、測定値や署名の有無などの情報を読み取って表示します。表示される PCR0 は、`build-output.json` の PCR0 と同じです。署名の有無を表す `IsSigned` は `false` です。続く `Metadata` には、元のコンテナイメージの情報が長く表示されます。
 
 ### 4-4. 測定値と Enclave イメージを受け渡し用のバケットに保存する
 
@@ -704,13 +710,13 @@ aws s3 cp santa.eif "s3://${BUCKET_NAME}/eif/santa.eif" --region "${REGION}"
 >    ```
 >
 > 3. 手順 7 を終えていた場合は、暗号化した希望を新しいインスタンスに取得し直すため、手順 7-2 の `aws s3 cp "s3://${BUCKET_NAME}/inbox/" inbox/ --recursive --region "${REGION}"` を実行します。
-> 4. 新しいインスタンスには Docker のキャッシュが無いため、手順 11 の `docker build` は、Rust のツールチェーンと NSM のライブラリのビルドからやり直しになり、手順 4 と同じく数分かかります。
+> 4. 新しいインスタンスには Docker のキャッシュが無いため、手順 11 の `docker build` は、Rust のツールチェーンと NSM のライブラリのビルドからやり直しになり、手順 4 と同じく 1〜2 分かかります。
 
 <!-- 画面写真: Session Manager のターミナル。build-enclave の出力の PCR0・PCR1・PCR2 を枠で囲む -->
 
 > **この手順で確かめること**
 > - **やること**: `build-output.json` の PCR0 の桁数を、`jq -r .Measurements.PCR0 build-output.json | tr -d '\n' | wc -c` で数えます。`santa.eif` の大きさを 4 倍して、Enclave に渡すメモリの 3,072 MiB と比べます。
-> - **期待する結果**: PCR0 は 96 桁の 16 進数です。`santa.eif` の大きさの 4 倍は、3,072 MiB 以下です。<!-- 要確認: 実機の EIF の大きさ -->
+> - **期待する結果**: PCR0 は 96 桁の 16 進数です。`santa.eif` の大きさの 4 倍は、3,072 MiB 以下です。2026 年 11 月の検証では、`santa.eif` は 199 MiB で、その 4 倍の 796 MiB は 3,072 MiB 以下でした。
 > - **ここから分かること**: 測定値は、イメージの中身から計算した SHA-384 のハッシュ値で、インスタンスや起動の時刻には依存しません。次の手順で、キーの管理者がこの PCR0 をキーポリシーに書きます。また、`nitro-cli` は、Enclave に渡すメモリが Enclave イメージのファイルの大きさの 4 倍以上あるかを検査します。そのため、イメージが大きいほど、Enclave に多くのメモリが必要になります。
 
 ## ５．Enclave にだけ復号を許す KMS キーを作成する
@@ -728,7 +734,7 @@ echo "${PCR0}"
 [[ ${#PCR0} -eq 96 ]] && echo "PCR0=\"${PCR0}\"" >> resource-ids.env
 ```
 
-96 桁の 16 進数が表示されれば成功です。
+96 桁の 16 進数が表示されれば成功です。96 桁のときだけ、`resource-ids.env` に追記されます。
 
 次のコマンドで、キーポリシー `key-policy.json` を作成します。`${ACCOUNT_ID}`・`${ROLE_ARN}`・`${PCR0}` には、変数の値が入ります。最後の行は、3 つの変数が空でないかを確かめ、`OK` か `NG` を表示します。
 
@@ -840,7 +846,7 @@ echo "${KEY_ID}"
 
 KMS は、キーポリシーを受け付ける前に、作成を依頼したプリンシパル自身が、後でキーポリシーを変更できるかを確かめます。変更できないキーポリシーは、拒否されます。このキーポリシーでは、アカウントを表すプリンシパルに `kms:Put*` を許可しているため、IAM ポリシーで `kms:PutKeyPolicy` を許可されているあなたは、この確認を通ります。
 
-キーに、エイリアス `alias/aws-deepcuts-santa` を付けます。エイリアスは、KMS キーに付ける別名です。
+キーに、エイリアス `alias/aws-deepcuts-santa` を付けます。エイリアスは、KMS キーに付ける別名です。このコマンドは、成功すると何も表示しません。
 
 ```bash
 aws kms create-alias --region "${REGION}" --alias-name "${KEY_ALIAS}" --target-key-id "${KEY_ID}"
@@ -858,7 +864,7 @@ aws kms get-key-policy --region "${REGION}" --key-id "${KEY_ID}" --query Policy 
 
 > **この手順で確かめること**
 > - **やること**: KMS コンソールの左のメニューから「カスタマー管理型のキー」を選び、`aws-deepcuts-santa` を開いて「キーポリシー」タブを確認します。
-> - **期待する結果**: ステートメントが 3 つあります。Decrypt を許可しているのは `aws-deepcuts-enclave-parent-role` だけで、その条件に `kms:RecipientAttestation:ImageSha384` と手順 4 の PCR0 があります。アカウントに `kms:*` や `kms:Create*` を与えるステートメントはありません。作成の操作は `kms:CreateAlias` だけです。<!-- 要確認: コンソールの表示名 -->
+> - **期待する結果**: ステートメントが 3 つあります。Decrypt を許可しているのは `aws-deepcuts-enclave-parent-role` だけで、その条件に `kms:RecipientAttestation:ImageSha384` と手順 4 の PCR0 があります。アカウントに `kms:*` や `kms:Create*` を与えるステートメントはありません。作成の操作は `kms:CreateAlias` だけです。
 > - **ここから分かること**: このキーで暗号化したデータの復号を KMS が許可するのは、手順 4 のイメージの PCR0 が入ったアテステーション文書を付けた、インスタンスロールの要求だけです。キーポリシーは、`AdministratorAccess` を持つあなたにも、Decrypt とグラントの作成を許可していません。文書を付ければ誰の要求でも希望を読めるのか、という疑問は、手順 10 で確かめます。
 
 ## ６．参加者として希望を暗号化して送る
@@ -900,7 +906,7 @@ done
 cat participants/sato.json
 ```
 
-公開鍵も、希望と一緒に KMS キーで暗号化します。運営者が受け渡しの途中で公開鍵を自分のものに差し替えると、その参加者の結果を運営者が開けてしまうためです。公開鍵を KMS キーで暗号化しておけば、Enclave は、KMS から復号した公開鍵だけを使います。インスタンスロールには Encrypt を許可していないため、運営者は、差し替えた公開鍵を含む暗号文を作成できません。KMS の Encrypt で暗号化できる平文は、4,096 バイトまでです。1 人分の JSON は約 600 バイトです。
+公開鍵も、希望と一緒に KMS キーで暗号化します。運営者が受け渡しの途中で公開鍵を自分のものに差し替えると、その参加者の結果を運営者が開けてしまうためです。公開鍵を KMS キーで暗号化しておけば、Enclave は、KMS から復号した公開鍵だけを使います。インスタンスロールには Encrypt を許可していないため、運営者は、差し替えた公開鍵を含む暗号文を作成できません。KMS の Encrypt で暗号化できる平文は、4,096 バイトまでです。1 人分の JSON は約 550 バイトです。
 
 ### 6-4. KMS キーで暗号化する
 
@@ -978,7 +984,7 @@ aws kms decrypt --region "${REGION}" --ciphertext-blob fileb://inbox/sato.enc
 
 > **この手順で確かめること**
 > - **やること**: 2 つの `decrypt` のエラーを読みます。`get-caller-identity` の `Arn` を確認します。
-> - **期待する結果**: どちらの `decrypt` も、`AccessDeniedException` で拒否されます。運営者の `Arn` は、`arn:aws:sts::<アカウント ID>:assumed-role/aws-deepcuts-enclave-parent-role/<インスタンス ID>` の形です。<!-- 要確認: エラーメッセージの全文 -->
+> - **期待する結果**: どちらの `decrypt` も、`AccessDeniedException` で拒否されます。運営者の `Arn` は、`arn:aws:sts::<アカウント ID>:assumed-role/aws-deepcuts-enclave-parent-role/<インスタンス ID>` の形です。エラーのメッセージは、`User: <拒否されたプリンシパルの ARN> is not authorized to perform: kms:Decrypt on resource: <キーの ARN> because no resource-based policy allows the kms:Decrypt action` です。メッセージの前には、空の行が 1 行表示されます。
 > - **ここから分かること**: キーの管理者は、IAM ポリシーで `kms:Decrypt` を許可されていても、キーポリシーがアカウントを表すプリンシパルに Decrypt を許可していないため、拒否されます。運営者は、キーポリシーで Decrypt を許可されたインスタンスロールを使っています。しかし、アテステーション文書を付けていないため、条件を満たさず拒否されます。要求に文書が無いと、条件付きのステートメントでは許可されません。
 
 ## ８．のぞき見 2：デバッグモードの Enclave で中を見る
@@ -1036,9 +1042,7 @@ sudo -i
 nitro-cli console --enclave-name santa-debug
 ```
 
-`nitro-cli console` は、接続した時点からの Enclave の出力を表示し続けます。接続より前の出力が表示されるかは、確かめられていません。そのため、要求を送る前に接続しておきます。`app.py` は、要求を受け付けるたびに、PCR0 と処理の結果をログに出力します。表示を終えるときは Ctrl+C を押します。Ctrl+C を押しても、Enclave は停止しません。
-
-<!-- 要確認: nitro-cli console が、接続より前の出力を表示するか -->
+`nitro-cli console` は、接続する前の出力も含めて Enclave の起動からの出力を表示し、その後も表示し続けます。接続した直後には、Enclave のカーネルの起動のログと、アプリの起動時のログ（`[1/6]` から `[6/6]`）が表示されます。`app.py` は、要求を受け付けるたびに、PCR0 と処理の結果をログに出力します。表示を終えるときは Ctrl+C を押します。Ctrl+C を押しても、Enclave は停止しません。
 
 ### 8-3. 2 つの PCR0 を並べる
 
@@ -1067,21 +1071,21 @@ PCR3      : …
 PCR4      : …
 PCR8      : 000…（署名していないため 0）
 public_key: 294 バイト（SHA-256 の先頭 16 桁: …）
-certificate: 640 バイト、cabundle: 4 個
+certificate: 650 バイト、cabundle: 4 個
 ```
 
 | 行 | 意味 |
 | --- | --- |
-| `module_id` | 文書を発行した NSM の ID。親インスタンスの ID と Enclave の ID からなる |
+| `module_id` | 文書を発行した NSM の ID。親インスタンスの ID と Enclave の ID からなる。`describe-enclaves` の `EnclaveID` と比べると、`enc` の後ろに `0` が 1 つ多く付くことがある |
 | `timestamp` | 文書を発行した時刻 |
 | `digest` | 測定値の計算に使ったハッシュ関数 |
 | `PCR0`〜`PCR2` | Enclave イメージの測定値。手順 4 の表のとおり |
-| `PCR3`・`PCR4` | Nitro Enclaves のユーザーガイドによると、PCR3 は親インスタンスの IAM ロールから、PCR4 は親インスタンスの ID から計算した値 |
-| `PCR8` | 署名に使った証明書の測定値。このハンズオンのイメージは署名していない |
+| `PCR3`・`PCR4` | Nitro Enclaves のユーザーガイドによると、PCR3 は親インスタンスの IAM ロールから、PCR4 は親インスタンスの ID から計算した値。どちらも、デバッグモードでも 0 にならない |
+| `PCR8` | 署名に使った証明書の測定値。このハンズオンのイメージは署名していないため、0 になる |
 | `public_key` | Enclave のアプリが作成した公開鍵 |
 | `certificate`・`cabundle` | 文書の署名を検証するための証明書と、その証明書を発行した認証局の証明書の一覧 |
 
-<!-- 要確認: PCR3・PCR4 の定義をユーザーガイドの原文で確かめる。PCR8 が署名していないイメージで 0 になること -->
+<!-- 要確認: PCR3・PCR4 の定義をユーザーガイドの原文で確かめる -->
 
 ここでは、`PCR0` の行を読みます。
 
@@ -1152,6 +1156,12 @@ nitro-cli describe-enclaves
 nitro-cli console --enclave-name santa
 ```
 
+画面のメッセージは、コンソールに接続できなかったことだけを伝えます。理由は、表示されたログのファイルに書かれています。最も新しいログのファイルを表示します。
+
+```bash
+cat "$(ls -t /var/log/nitro_enclaves/err*.log | head -n 1)"
+```
+
 ### 9-2. 組み合わせを依頼する
 
 ```bash
@@ -1190,7 +1200,7 @@ aws s3 cp results/ "s3://${BUCKET_NAME}/results/" --recursive --region "${REGION
 
 > **この手順で確かめること**
 > - **やること**: `describe-enclaves` の `Flags`、`nitro-cli console` のエラー、`client.py` の表示を読みます。
-> - **期待する結果**: `Flags` は `NONE` です。`nitro-cli console` は、エラーコード E44（Enclave console connection failure）と、エラーのログのファイル `/var/log/nitro_enclaves/err<時刻>.log` の場所を表示して終わります。エラーの理由「The enclave was not started with the debug flag set, include '--debug-mode' in the run-enclave command」は、画面ではなく、このログのファイルに書かれています。`client.py` は 4 人分の結果のファイルを作成し、「運営者に見える希望: なし」と表示します。結果のファイルの中身は、読める形ではありません。
+> - **期待する結果**: `Flags` は `NONE` です。`nitro-cli console` は、エラーコード E44（Enclave console connection failure）と、エラーのログのファイル `/var/log/nitro_enclaves/err<時刻>.log` の場所を表示して終わります。エラーの理由「The enclave was not started with the debug flag set, include '--debug-mode' in the run-enclave command」は、画面ではなく、`cat` で表示したログのファイルに書かれています。`client.py` は 4 人分の結果のファイルを作成し、「運営者に見える希望: なし」と表示します。結果のファイルの中身は、読める形ではありません。
 > - **ここから分かること**: 本番モードの Enclave の中は、運営者からは見えません。Enclave は KMS から希望を受け取り、組み合わせを決め、各参加者の公開鍵で暗号化した結果だけを返しました。運営者の手元にあるのは、暗号文だけです。
 
 ## １０．のぞき見 3：アテステーション文書を横取りして KMS に送る
@@ -1226,7 +1236,7 @@ aws kms decrypt --region "${REGION}" --ciphertext-blob fileb://inbox/sato.enc \
   --output json > stolen.json
 ```
 
-<!-- 要確認: KMS が受け付ける文書の古さの上限。失敗したら attest からやり直す -->
+<!-- 要確認: KMS が受け付ける文書の古さの上限。2026-11 の検証では、attest の直後に実行して成功した。上限を探る試行はしていない -->
 
 | パラメータ | 指定した値 | 意味 |
 | --- | --- | --- |
@@ -1252,7 +1262,7 @@ openssl cms -cmsout -print -inform DER -in stolen.der | grep -E 'contentType|alg
 
 > **この手順で確かめること**
 > - **やること**: 文書の PCR0 と `build-output.json` の PCR0 を比べます。`stolen.json` のキーの一覧と、`openssl` の出力を読みます。
-> - **期待する結果**: 2 つの PCR0 は一致します。`decrypt` は成功し、`stolen.json` には `CiphertextForRecipient`・`EncryptionAlgorithm`・`KeyId` があります。`Plaintext` は無いか、空です。API の説明は、`CiphertextForRecipient` があるとき `Plaintext` は null か空であると書いています。そのため、2 つ目の `jq` は `(なし)` か空の行を表示します。`openssl` の出力には、EnvelopedData と RSA-OAEP の行があります。<!-- 要確認: Plaintext のキーが出力に現れるか、openssl の表示 -->
+> - **期待する結果**: 2 つの PCR0 は一致します。`decrypt` は成功し、`stolen.json` には `CiphertextForRecipient`・`EncryptionAlgorithm`・`KeyId` があります。キーの一覧に `Plaintext` は無く、2 つ目の `jq` は `(なし)` を表示します。API の説明も、`CiphertextForRecipient` があるとき `Plaintext` は null か空であると書いています。`openssl` の出力には、`pkcs7-envelopedData`・`rsaesOaep`・`pkcs7-data`・`aes-256-cbc` の行があります。
 > - **ここから分かること**: KMS は、本物の文書を付けた運営者の要求を許可しました。しかし、復号した希望を平文では返さず、文書の中の公開鍵で暗号化して返しました。対になる秘密鍵は Enclave の中にしか無いため、運営者は復号した希望を読めません。
 
 ## １１．のぞき見 4：Enclave のアプリを書き換える
@@ -1281,7 +1291,7 @@ docker build -t santa-enclave:tampered enclave/
 nitro-cli build-enclave --docker-uri santa-enclave:tampered --output-file santa-tampered.eif | tee build-output-tampered.json
 ```
 
-`docker build` は、手順 4 で作成した段階 1 のキャッシュを使うため、手順 4 より短い時間で終わります。
+`docker build` は、手順 4 で作成したキャッシュを使うため、手順 4 より短い時間で終わります。2026 年 11 月の検証では、約 1 秒で終わりました。
 
 元のイメージと、書き換えたイメージの PCR を、先頭の 16 桁で比べます。
 
@@ -1310,7 +1320,7 @@ nitro-cli terminate-enclave --enclave-name santa-tampered
 \cp enclave/app.py.orig enclave/app.py
 ```
 
-Amazon Linux 2023 の root では、`cp` が `cp -i` の別名になっていて、上書きのたびに確認を求めます。`-f` を付けても確認は止まりません。`cp` の前の `\` は、別名を使わずに `cp` を実行する指定です。
+Amazon Linux 2023 の root では、`cp` が `cp -i` の別名になっていて、上書きのたびに確認を求めます。`cp` の前の `\` は、別名を使わずに `cp` を実行する指定です。`\` を付けずに実行して `cp: overwrite 'enclave/app.py'?` と表示された場合は、y と Enter を押します。
 
 <!-- 画面写真: Session Manager のターミナル。PCR0・PCR1・PCR2 の比較の 3 行を枠で囲む -->
 
@@ -1358,7 +1368,7 @@ AWS CloudTrail は、AWS の API の呼び出しを記録するサービスで�
 
 ### 13-1. マネジメントコンソールで確認する
 
-CloudTrail コンソールの左のメニューから「イベント履歴」を選びます。検索の属性に「イベント名」を選び、`Decrypt` を入力します。成功したイベントのうち、ユーザー名が親インスタンスの ID のイベントを開き、イベントの JSON の `additionalEventData` の `recipient` を確認します。
+CloudTrail コンソールの左のメニューから「イベント履歴」を選びます。検索の属性に「イベント名」を選び、`Decrypt` を入力します。「ユーザー名」の列には、インスタンスロールの要求では親インスタンスの ID が、CloudShell の要求ではあなたの IAM ユーザーの名前が表示されます。成功したイベントのうち、ユーザー名が親インスタンスの ID のイベントを開き、「イベントレコード」の JSON の `additionalEventData` の `recipient` を確認します。
 
 <!-- 要確認: イベント履歴の検索の画面の表示名 -->
 
@@ -1402,7 +1412,7 @@ CloudTrail のイベント履歴に反映されるまで、数分かかること
 echo "${PCR0^^}" | basenc --base16 -d | base64 -w0 | cut -c1-16; echo
 ```
 
-表示された 16 文字は、成功の行の 4 列目と一致します。
+表示された 16 文字は、成功の行の 4 列目と一致します。成功した 5 件は、どれも手順 4 のイメージの文書を付けた要求です。
 
 ハンズオンで試した 6 通りの要求と、KMS の判定をまとめると、次の図のとおりです。
 
@@ -1431,6 +1441,8 @@ bash ./cleanup.sh
 # 以下の文言が表示されればクリーンアップ成功です
 # ✅ すべてのリソースの削除が完了しました！
 ```
+
+2026 年 11 月の検証では、`cleanup.sh` は約 1 分で終わりました。
 
 `cleanup.sh` は、次の順にリソースを削除します。
 
@@ -1484,8 +1496,8 @@ KMS キーは、削除を予約してから 7 日後に削除されます。そ�
 <!-- 画面写真: KMS コンソールの「カスタマー管理型のキー」。aws-deepcuts-santa のステータス「削除保留中」を枠で囲む -->
 
 > **この手順で確かめること**
-> - **やること**: 手順 14-2 の 3 つのコマンドの結果を読みます。EC2 コンソールで `aws-deepcuts-enclave-parent` の「インスタンスの状態」を、KMS コンソールの「カスタマー管理型のキー」でキーの「ステータス」を確認します。
-> - **期待する結果**: インスタンスはすべて `terminated` で、EC2 コンソールでは「終了済み」と表示されます。KMS キーはすべて `PendingDeletion` で、KMS コンソールでは「削除保留中」と表示されます。削除の日時は 7 日後です。受け渡し用のバケットはありません。<!-- 要確認: コンソールの表示名 -->
+> - **やること**: 手順 14-2 の 3 つのコマンドの結果を読みます。EC2 コンソールで `aws-deepcuts-enclave-parent` の「インスタンスの状態」を、KMS コンソールの「カスタマー管理型のキー」でキーの「ステータス」を確認します。エイリアスは削除したため、KMS コンソールの「エイリアス」の列は「-」になります。
+> - **期待する結果**: インスタンスはすべて `terminated` で、EC2 コンソールでは「終了済み」と表示されます。KMS キーはすべて `PendingDeletion` で、KMS コンソールでは「削除保留中」と表示されます。削除の日時は 7 日後です。受け渡し用のバケットはありません。<!-- 要確認: EC2 コンソールの「終了済み」の表示。2026-11 の検証では、EC2 コンソールの画面は確かめていない（CLI で terminated を確認済み） -->
 > - **ここから分かること**: EC2・EBS・パブリック IPv4 アドレス・S3 の課金は、ここで止まります。終了したインスタンスは、しばらくの間 EC2 コンソールの一覧に残りますが、課金されません。KMS キーだけは、削除の待機期間の 7 日が終わるまで残り、その間は削除を取り消せます。待機期間の課金の有無は確かめられていないため、[費用の見積もり](#費用の見積もり)では、課金されるものとして数えています。
 
 ## 費用の見積もり
@@ -1541,13 +1553,14 @@ KMS キーは、削除を予約してから 7 日後に削除されます。そ�
 | `setup.sh` が `resource-ids.env が既に存在します` で止まる | 前回の環境が残っている | `bash ./cleanup.sh` を実行してから、`setup.sh` をやり直す |
 | `setup.sh` が `ルートユーザーで実行しています` で止まる | ルートユーザーでサインインしている | IAM ユーザーか IAM ロールでサインインし直す |
 | `setup.sh` が `使えるインスタンスタイプとサブネットの組が見つかりませんでした` で止まる | 既定のサブネットで、パブリック IPv4 アドレスの自動割り当てが無効になっている | VPC コンソールで、既定のサブネットの「パブリック IPv4 アドレスを自動割り当て」を有効にしてから、`bash ./cleanup.sh` と `bash ./setup.sh` を実行する |
+| `setup.sh` が `東京リージョンに既定の VPC がありません` で止まる | 既定の VPC を削除している | VPC コンソールの「アクション」から「デフォルト VPC を作成」で作成してから、`bash ./cleanup.sh` と `bash ./setup.sh` を実行する |
 | `setup.sh` が `AccessDenied` などで途中で止まる | 権限が足りない | 権限を修正してから `bash ./cleanup.sh` を実行し、`bash ./setup.sh` をやり直す |
 | `setup.sh` が `既にあり、タグ Project=aws-deepcuts-nitro-enclaves が付いていません` で止まる | 同じ名前の IAM ロール・インスタンスプロファイル・セキュリティグループが、このハンズオンの外で作成されている | そのリソースは変更・削除しない。`setup.sh` と `cleanup.sh` も、タグの無いリソースを変更・削除しない。ハンズオン用の別のアカウントで実施する |
 | `run-instances` が、`iamInstanceProfile` の値が無効であることを示すエラーで失敗する | 作成した直後のインスタンスプロファイルが、まだ EC2 から見えていない | インスタンスプロファイルの反映を待つため、1〜2 分待ってから手順 2-2 を実行し直す |
 | `run-instances` が `VcpuLimitExceeded` で失敗する | オンデマンドの標準インスタンスの vCPU のクォータが足りない | [前提条件](#前提条件)の方法でクォータを確認し、Service Quotas で引き上げを申請する |
 | `run-instances` が別のエラーで失敗する | 無料プランのアカウントで、このインスタンスタイプを使えない可能性がある | [前提条件](#前提条件)のコマンドで、アカウントのプランを確認する。<!-- 要確認: 無料プランで起動したときのエラー --> |
 | 手順 2-3 の `PingStatus` が `Online` にならない、または Session Manager で接続できない | SSM エージェントの登録が終わっていない。インスタンスロールが付いていない | 数分待つ。EC2 コンソールのインスタンスの「セキュリティ」タブで、IAM ロールが `aws-deepcuts-enclave-parent-role` であることを確認する |
-| `cloud-init status --wait` が `status: error` を返す | ユーザーデータの途中で、パッケージのインストールなどが失敗した | `tail -n 50 /var/log/cloud-init-output.log` で、失敗したコマンドを確認する。<!-- 要確認: AL2023 の x86_64 で aws-nitro-enclaves-cli と aws-nitro-enclaves-cli-devel を dnf で入れられること --> |
+| `cloud-init status --wait` が `status: error` を返す | ユーザーデータの途中で、パッケージのインストールなどが失敗した | `tail -n 50 /var/log/cloud-init-output.log` で、失敗したコマンドを確認する。 |
 | `nitro-enclaves-allocator.service` が起動しない | 親インスタンスのメモリが足りない。または `allocator.yaml` の書式が崩れている | `journalctl -u nitro-enclaves-allocator.service --no-pager | tail -n 20` で理由を確認する。`allocator.yaml` を手順 3-2 のとおりに修正し、`systemctl restart nitro-enclaves-allocator.service` を実行する |
 | `run-enclave` が E26 で失敗する | Enclave に渡すメモリが、Enclave イメージのファイルの大きさの 4 倍に足りない | `allocator.yaml` の `memory_mib` を 4096 にして `systemctl restart nitro-enclaves-allocator.service` を実行し、`run-enclave` の `--memory` を 4096 にする。c6i.xlarge のメモリ 8 GiB で収まる。`nitro-cli explain --error-code E26` で説明も表示できる |
 | `run-enclave` が E27 で失敗する | `--memory` の値が、アロケーターで確保したメモリを超えている | `--memory` を `allocator.yaml` の `memory_mib` 以下にする |
